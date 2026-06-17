@@ -1,0 +1,30 @@
+name: close-expired-sessions
+
+# Safety-net cron for attendance sessions a teacher forgot to end.
+# Vercel Hobby caps cron at once/day, so this runs the 15-min sweep instead.
+# Hits the authenticated route handler with the CRON_SECRET bearer token.
+#
+# Setup (repo Settings):
+#   - Secrets and variables > Actions > Secrets:   CRON_SECRET = <value from .env>
+#   - Secrets and variables > Actions > Variables:  APP_URL    = https://your-app.vercel.app
+#
+# Note: GitHub disables scheduled workflows after 60 days with no repo activity.
+# Note: scheduled runs only fire on the default branch, and may be delayed under load.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close expired attendance sessions
+        run: |
+          curl -fsS -X GET \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/close-expired-sessions"
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ vars.APP_URL }}
