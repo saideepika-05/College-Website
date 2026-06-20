@@ -26,7 +26,6 @@ import {
 const openSchema = z.object({
   sectionId: z.string().min(1, "Select a section"),
   subjectId: z.string().min(1, "Select a subject"),
-  durationMinutes: z.number().int().min(2).max(60).default(10),
 });
 
 const sessionIdSchema = z.object({ sessionId: z.string().min(1) });
@@ -57,7 +56,6 @@ export const teacherOpenAttendanceSession = teacherAction
       teacherId: ctx.scope.teacherId,
       sectionId: parsedInput.sectionId,
       subjectId: parsedInput.subjectId,
-      durationMinutes: parsedInput.durationMinutes,
     });
     revalidateAttendance();
     return { sessionId: session.id };
@@ -83,7 +81,6 @@ export const hodOpenAttendanceSession = hodAction
       teacherId: teacherId!,
       sectionId: parsedInput.sectionId,
       subjectId: parsedInput.subjectId,
-      durationMinutes: parsedInput.durationMinutes,
     });
     revalidateAttendance();
     return { sessionId: session.id };

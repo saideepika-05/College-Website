@@ -30,7 +30,8 @@ export type ClassOption = {
 
 /**
  * "Take attendance" launcher: pick the class (one of the caller's
- * subject·section pairs) and a duration, then jump to the live QR screen.
+ * subject·section pairs), then jump to the live QR screen. The QR opens
+ * for a fixed 30-second scan window.
  */
 export function StartSessionButton({
   classes,
@@ -45,7 +46,6 @@ export function StartSessionButton({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [classKey, setClassKey] = useState("");
-  const [duration, setDuration] = useState("10");
 
   // Strict-auto period: locked to the clock. Re-evaluate while the dialog is
   // open so the displayed period stays correct across a slot boundary.
@@ -130,20 +130,9 @@ export function StartSessionButton({
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-2">
-          <Label>Scanning window</Label>
-          <Select value={duration} onValueChange={setDuration}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="5">5 minutes</SelectItem>
-              <SelectItem value="10">10 minutes</SelectItem>
-              <SelectItem value="15">15 minutes</SelectItem>
-              <SelectItem value="30">30 minutes</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          The QR code stays open for <strong>30 seconds</strong>.
+        </p>
         <Button
           className="w-full"
           disabled={!selected || !period || isExecuting}
@@ -152,7 +141,6 @@ export function StartSessionButton({
             execute({
               subjectId: selected.subjectId,
               sectionId: selected.sectionId,
-              durationMinutes: Number(duration),
             })
           }
         >

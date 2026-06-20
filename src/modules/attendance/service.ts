@@ -15,10 +15,11 @@ import { audit } from "@/lib/audit";
 import { getActiveAcademicSession } from "@/lib/authz";
 import { isUniqueViolation } from "@/lib/db-errors";
 import { actionError } from "@/lib/safe-action";
-import { getCurrentPeriod, minutesUntilPeriodEnd } from "./periods";
+import { getCurrentPeriod } from "./periods";
 import { newSessionSecret, verifyToken } from "./token";
 
-export const DEFAULT_SESSION_MINUTES = 10;
+/** Every attendance session is open for a fixed 30-second scan window. */
+export const SESSION_WINDOW_SECONDS = 30;
 
 /**
  * Opens an attendance session for (section, subject) taught by `teacherId`.
@@ -30,7 +31,6 @@ export async function openSession(
     teacherId: string;
     sectionId: string;
     subjectId: string;
-    durationMinutes?: number;
   },
 ) {
   const active = await getActiveAcademicSession();
@@ -65,9 +65,6 @@ export async function openSession(
     );
   }
 
-  // Scan window: the requested duration, but never past the period's end.
-  const requested = input.durationMinutes ?? DEFAULT_SESSION_MINUTES;
-  const minutes = Math.max(1, Math.min(requested, minutesUntilPeriodEnd(now)));
   const [section] = await db
     .select()
     .from(sections)
@@ -86,7 +83,7 @@ export async function openSession(
           teacherId: input.teacherId,
           tokenSecret: newSessionSecret(),
           status: "OPEN",
-          expiresAt: new Date(now.getTime() + minutes * 60_000),
+          expiresAt: new Date(now.getTime() + SESSION_WINDOW_SECONDS * 1_000),
           classDate,
           periodNo: period!.no,
         })
