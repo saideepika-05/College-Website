@@ -2,8 +2,15 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/kit/page-header";
 import { getTeacherScope } from "@/lib/authz";
 import { requireRole } from "@/lib/session";
-import { teacherOpenAttendanceSession } from "@/modules/attendance/actions";
-import { listAttendanceSessions } from "@/modules/attendance/queries";
+import {
+  teacherManualAttendance,
+  teacherOpenAttendanceSession,
+} from "@/modules/attendance/actions";
+import {
+  getRostersForSections,
+  listAttendanceSessions,
+} from "@/modules/attendance/queries";
+import { ManualAttendanceButton } from "@/modules/attendance/components/manual-attendance";
 import { SessionsTable } from "@/modules/attendance/components/sessions-table";
 import {
   StartSessionButton,
@@ -37,6 +44,10 @@ export default async function TeacherAttendancePage() {
         }))
     : [];
 
+  const rosters = await getRostersForSections([
+    ...new Set(classes.map((c) => c.sectionId)),
+  ]);
+
   return (
     <>
       <PageHeader
@@ -44,11 +55,19 @@ export default async function TeacherAttendancePage() {
         description="Generate a QR session and track scans live"
         actions={
           classes.length ? (
-            <StartSessionButton
-              classes={classes}
-              action={teacherOpenAttendanceSession}
-              detailHrefBase="/teacher/attendance"
-            />
+            <div className="flex gap-2">
+              <ManualAttendanceButton
+                classes={classes}
+                rosters={rosters}
+                action={teacherManualAttendance}
+                detailHrefBase="/teacher/attendance"
+              />
+              <StartSessionButton
+                classes={classes}
+                action={teacherOpenAttendanceSession}
+                detailHrefBase="/teacher/attendance"
+              />
+            </div>
           ) : undefined
         }
       />

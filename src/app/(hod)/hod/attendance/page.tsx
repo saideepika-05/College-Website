@@ -2,13 +2,20 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/kit/page-header";
 import { getHodDepartmentIds } from "@/lib/authz";
 import { requireRole } from "@/lib/session";
-import { hodOpenAttendanceSession } from "@/modules/attendance/actions";
+import {
+  hodManualAttendance,
+  hodOpenAttendanceSession,
+} from "@/modules/attendance/actions";
+import { ManualAttendanceButton } from "@/modules/attendance/components/manual-attendance";
 import { SessionsTable } from "@/modules/attendance/components/sessions-table";
 import {
   StartSessionButton,
   type ClassOption,
 } from "@/modules/attendance/components/start-session";
-import { listAttendanceSessions } from "@/modules/attendance/queries";
+import {
+  getRostersForSections,
+  listAttendanceSessions,
+} from "@/modules/attendance/queries";
 import { listTeacherAssignments } from "@/modules/teaching/queries";
 
 export const metadata: Metadata = { title: "Attendance" };
@@ -40,6 +47,10 @@ export default async function HodAttendancePage() {
     });
   }
 
+  const rosters = await getRostersForSections([
+    ...new Set(classes.map((c) => c.sectionId)),
+  ]);
+
   return (
     <>
       <PageHeader
@@ -47,11 +58,19 @@ export default async function HodAttendancePage() {
         description="Department attendance sessions"
         actions={
           classes.length ? (
-            <StartSessionButton
-              classes={classes}
-              action={hodOpenAttendanceSession}
-              detailHrefBase="/hod/attendance"
-            />
+            <div className="flex gap-2">
+              <ManualAttendanceButton
+                classes={classes}
+                rosters={rosters}
+                action={hodManualAttendance}
+                detailHrefBase="/hod/attendance"
+              />
+              <StartSessionButton
+                classes={classes}
+                action={hodOpenAttendanceSession}
+                detailHrefBase="/hod/attendance"
+              />
+            </div>
           ) : undefined
         }
       />

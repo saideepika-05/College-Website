@@ -19,6 +19,7 @@ import {
   closeSession,
   editRecord,
   getSessionRow,
+  markManualAttendance,
   openSession,
   sessionMatchesPairs,
 } from "./service";
@@ -26,6 +27,19 @@ import {
 const openSchema = z.object({
   sectionId: z.string().min(1, "Select a section"),
   subjectId: z.string().min(1, "Select a subject"),
+});
+
+const manualSchema = z.object({
+  sectionId: z.string().min(1, "Select a section"),
+  subjectId: z.string().min(1, "Select a subject"),
+  records: z
+    .array(
+      z.object({
+        studentId: z.string().min(1),
+        status: z.enum(["PRESENT", "ABSENT"]),
+      }),
+    )
+    .min(1, "No students to mark"),
 });
 
 const sessionIdSchema = z.object({ sessionId: z.string().min(1) });
@@ -81,6 +95,51 @@ export const hodOpenAttendanceSession = hodAction
       teacherId: teacherId!,
       sectionId: parsedInput.sectionId,
       subjectId: parsedInput.subjectId,
+    });
+    revalidateAttendance();
+    return { sessionId: session.id };
+  });
+
+// ---------------------------------------------------------------------------
+// Manual entry (no QR — full-roster marking for the current period)
+// ---------------------------------------------------------------------------
+
+export const teacherManualAttendance = teacherAction
+  .metadata({ actionName: "attendance.manual" })
+  .inputSchema(manualSchema)
+  .action(async ({ parsedInput, ctx }) => {
+    assertTeacherPair(ctx.scope, parsedInput.subjectId, parsedInput.sectionId);
+    const session = await markManualAttendance(ctx.user.id, {
+      teacherId: ctx.scope.teacherId,
+      sectionId: parsedInput.sectionId,
+      subjectId: parsedInput.subjectId,
+      statuses: parsedInput.records,
+    });
+    revalidateAttendance();
+    return { sessionId: session.id };
+  });
+
+export const hodManualAttendance = hodAction
+  .metadata({ actionName: "attendance.manual.hod" })
+  .inputSchema(manualSchema)
+  .action(async ({ parsedInput, ctx }) => {
+    const dept = await departmentOfSection(parsedInput.sectionId);
+    if (!dept) actionError("Section not found.");
+    assertDepartmentInScope(ctx.departmentIds, dept!);
+    const teacherId = await assignedTeacherFor(
+      parsedInput.sectionId,
+      parsedInput.subjectId,
+    );
+    if (!teacherId) {
+      actionError(
+        "No (single) teacher is assigned to this subject for this section.",
+      );
+    }
+    const session = await markManualAttendance(ctx.user.id, {
+      teacherId: teacherId!,
+      sectionId: parsedInput.sectionId,
+      subjectId: parsedInput.subjectId,
+      statuses: parsedInput.records,
     });
     revalidateAttendance();
     return { sessionId: session.id };

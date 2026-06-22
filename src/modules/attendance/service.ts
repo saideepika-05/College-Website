@@ -113,6 +113,128 @@ export async function openSession(
   });
 }
 
+/**
+ * Records attendance manually (no QR) for the current period, creating an
+ * already-CLOSED session. Every actively-enrolled student gets a record —
+ * the status from `statuses`, defaulting to ABSENT. The client's student
+ * list is never trusted; the roster is re-read server-side.
+ */
+export async function markManualAttendance(
+  actorId: string,
+  input: {
+    teacherId: string;
+    sectionId: string;
+    subjectId: string;
+    statuses: { studentId: string; status: "PRESENT" | "ABSENT" }[];
+  },
+) {
+  const active = await getActiveAcademicSession();
+  if (!active) actionError("No active academic session.");
+
+  const now = new Date();
+  const period = getCurrentPeriod(now);
+  if (!period) {
+    actionError(
+      "Attendance can only be taken during a scheduled period (9:40–4:10).",
+    );
+  }
+  const classDate = now.toISOString().slice(0, 10);
+
+  const [existing] = await db
+    .select({ id: attendanceSessions.id })
+    .from(attendanceSessions)
+    .where(
+      and(
+        eq(attendanceSessions.sectionId, input.sectionId),
+        eq(attendanceSessions.classDate, classDate),
+        eq(attendanceSessions.periodNo, period!.no),
+      ),
+    )
+    .limit(1);
+  if (existing) {
+    actionError(
+      `Attendance for this section's period ${period!.no} (${period!.label}) has already been taken today. Open it to edit.`,
+    );
+  }
+
+  const [section] = await db
+    .select()
+    .from(sections)
+    .where(eq(sections.id, input.sectionId));
+  if (!section) actionError("Section not found.");
+
+  const enrolled = await db
+    .select({ studentId: enrollments.studentId })
+    .from(enrollments)
+    .where(
+      and(
+        eq(enrollments.sectionId, input.sectionId),
+        eq(enrollments.academicSessionId, active!.id),
+        eq(enrollments.status, "ACTIVE"),
+      ),
+    );
+  if (enrolled.length === 0) {
+    actionError("No students are enrolled in this section.");
+  }
+
+  const statusMap = new Map(input.statuses.map((s) => [s.studentId, s.status]));
+
+  return db.transaction(async (tx) => {
+    let sess;
+    try {
+      [sess] = await tx
+        .insert(attendanceSessions)
+        .values({
+          academicSessionId: active!.id,
+          sectionId: input.sectionId,
+          subjectId: input.subjectId,
+          teacherId: input.teacherId,
+          tokenSecret: newSessionSecret(),
+          status: "CLOSED",
+          expiresAt: now,
+          closedAt: now,
+          classDate,
+          periodNo: period!.no,
+        })
+        .returning();
+    } catch (e) {
+      if (isUniqueViolation(e)) {
+        actionError(
+          `Attendance for this section's period ${period!.no} (${period!.label}) has already been taken today. Open it to edit.`,
+        );
+      }
+      throw e;
+    }
+
+    await tx.insert(attendanceRecords).values(
+      enrolled.map((e) => ({
+        attendanceSessionId: sess!.id,
+        studentId: e.studentId,
+        status: statusMap.get(e.studentId) ?? ("ABSENT" as const),
+        markedVia: "MANUAL" as const,
+        lastModifiedById: actorId,
+      })),
+    );
+
+    await audit(tx, {
+      actorId,
+      action: "ATTENDANCE_MARK",
+      entityType: "attendanceSession",
+      entityId: sess!.id,
+      after: {
+        sectionId: sess!.sectionId,
+        subjectId: sess!.subjectId,
+        periodNo: sess!.periodNo,
+        present: input.statuses.filter((s) => s.status === "PRESENT").length,
+        total: enrolled.length,
+      },
+      departmentId: section!.departmentId,
+    });
+
+    return sess!;
+  });
+}
+
 export type ScanResult =
   | { ok: true; subjectName?: string }
   | { ok: false; reason: string };

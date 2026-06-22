@@ -56,7 +56,9 @@ export function LiveSession({
       dataRef.current = next;
       setData(next);
       if (next.qr) setSecondsLeft(next.qr.expiresInSeconds);
-      if (!next.isOpen) router.refresh();
+      // Already finalized elsewhere → swap to the closed view. An expired-but-
+      // still-OPEN session is auto-closed by the effect below instead.
+      if (!next.isOpen && next.status === "CLOSED") router.refresh();
     } catch {
       // transient network failure — next poll retries
     }
@@ -95,6 +97,22 @@ export function LiveSession({
         toast.error(error.serverError ?? "Could not close the session"),
     },
   );
+
+  // When the 30s window lapses but the session is still OPEN in the DB,
+  // finalize it immediately (backfill absentees) so student-side attendance
+  // updates without waiting for the cron. Fires once.
+  const autoClosedRef = useRef(false);
+  useEffect(() => {
+    if (
+      data &&
+      data.status === "OPEN" &&
+      !data.isOpen &&
+      !autoClosedRef.current
+    ) {
+      autoClosedRef.current = true;
+      void closeSession({ sessionId });
+    }
+  }, [data, closeSession, sessionId]);
 
   const progress = secondsLeft / QR_WINDOW_SECONDS;
   const ringRadius = 46;

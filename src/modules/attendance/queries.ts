@@ -273,3 +273,49 @@ export async function getStudentAttendanceHistory(
     .orderBy(desc(attendanceSessions.classDate), desc(attendanceRecords.markedAt))
     .limit(limit);
 }
+
+export type RosterStudent = {
+  studentId: string;
+  rollNumber: string;
+  name: string;
+};
+
+/**
+ * Actively-enrolled students for each section, keyed by sectionId — used to
+ * populate the manual attendance roster.
+ */
+export async function getRostersForSections(
+  sectionIds: string[],
+): Promise<Record<string, RosterStudent[]>> {
+  const active = await getActiveAcademicSession();
+  if (!active || sectionIds.length === 0) return {};
+
+  const rows = await db
+    .select({
+      sectionId: enrollments.sectionId,
+      studentId: students.id,
+      rollNumber: students.rollNumber,
+      name: user.name,
+    })
+    .from(enrollments)
+    .innerJoin(students, eq(enrollments.studentId, students.id))
+    .innerJoin(user, eq(students.userId, user.id))
+    .where(
+      and(
+        inArray(enrollments.sectionId, sectionIds),
+        eq(enrollments.academicSessionId, active.id),
+        eq(enrollments.status, "ACTIVE"),
+      ),
+    )
+    .orderBy(students.rollNumber);
+
+  const out: Record<string, RosterStudent[]> = {};
+  for (const r of rows) {
+    (out[r.sectionId] ??= []).push({
+      studentId: r.studentId,
+      rollNumber: r.rollNumber,
+      name: r.name,
+    });
+  }
+  return out;
+}
